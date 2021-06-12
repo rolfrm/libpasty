@@ -1,0 +1,6 @@
+[submodule "iron"]
+	path = iron
+	url = https://github.com/rolfrm/iron.git
+[submodule "sqlite3"]
+	path = sqlite3
+	url = git@github.com:rolfrm/sqlite3.git
