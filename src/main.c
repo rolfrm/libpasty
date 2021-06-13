@@ -54,6 +54,7 @@ void sql_exec_str(sqlite3 * db, const char * sql, const char * str){
     int ok = sqlite3_step(stmt);
     if(ok == SQLITE_DONE)
       break;
+    
   }
   sqlite3_finalize(stmt);
 }
@@ -103,10 +104,17 @@ void sql_exec(sqlite3 * db, const char * sql, ...){
 
   for(int i = 0; i < 10; i++){
     int ok = sqlite3_step(stmt);
+    logd("E: %s\n", print_sqlite_code(ok));
     if(ok == SQLITE_DONE)
       break;
     if(ok == SQLITE_ERROR){
-      ERROR("ERROR occured");
+      const char * err = sqlite3_errmsg(db);
+      ERROR("ERROR occured: %s", err);
+      break;
+    }
+    if(ok == SQLITE_MISUSE){
+      const char * err = sqlite3_errmsg(db);
+      ERROR("Misuse occured: %s", err);
       break;
     }
   }
@@ -139,6 +147,9 @@ bool stat_is_dir(struct stat sb){
 }
 bool stat_is_reg(struct stat sb){
   return  S_IFREG == (sb.st_mode & S_IFMT);
+}
+int stat_perm(struct stat sb){
+  return sb.st_mode & 0777;
 }
 
 const char * dirent_to_type(int dirent_type){
@@ -178,6 +189,10 @@ void print_files_table(sqlite3 * db){
     logd("\n");
     if(ok == SQLITE_DONE)
       break;
+    if(ok == SQLITE_ERROR){
+      logd("ERROR\n");
+      break;
+    }
   }
   sqlite3_finalize(stmt);
   
@@ -207,7 +222,7 @@ void update_run(sqlite3 *db, const char * loc_path){
   }else if(stat_is_reg(sb)){
     //logd("FILE: %s\n", loc_path);
     //sql_exec_str(db, "insert into files (name) VALUES (?)", loc_path);
-    sql_exec(db, "insert into files (name, type, size, modified) VALUES (?, ?, ?, ?)", SQL_STRING, loc_path, SQL_INT, 2, SQL_INT, sb.st_size, SQL_INT, sb.st_mtime, SQL_END);
+    sql_exec(db, "insert into files (name, type, size, modified, created, permissions) VALUES (?, ?, ?, ?, ?, ?)", SQL_STRING, loc_path, SQL_INT, 2, SQL_INT, sb.st_size, SQL_INT, sb.st_mtime, SQL_INT, sb.st_ctime, SQL_INT, stat_perm(sb), SQL_END);
     
   }
   
@@ -220,7 +235,7 @@ int main(int argc, char ** argv){
   sqlite3_open(":memory:", &db);
   sql_query(db, "pragma user_version = 150");
   sql_query(db, "pragma user_version");
-  sql_query(db, "create table files (name TEXT PRIMARY KEY, type INTEGER, size INTEGER, modified INTEGER);");
+  sql_query(db, "create table files (name TEXT PRIMARY KEY, type INTEGER, size INTEGER, modified INTEGER, created INTEGER, permissions INTEGER);");
   update_run(db, "./iron");
   sql_query_int(db, "SELECT count(name) from files");
   print_files_table(db);
