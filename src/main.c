@@ -183,7 +183,8 @@ void update_run(sqlite3 *db, const char * loc_path){
     DIR * d = opendir(loc_path);
     if(d == NULL)
       return;
-    sql_exec(db, "insert into files (name, type) VALUES (?, ?)", SQL_STRING, loc_path, SQL_INT, 1, SQL_END);
+    
+    sql_exec(db, "insert or ignore into local.temp_files (name, type) VALUES (?, ?)", SQL_STRING, loc_path, SQL_INT, 1, SQL_END);
     
     
     struct dirent * ent;
@@ -192,43 +193,107 @@ void update_run(sqlite3 *db, const char * loc_path){
 	 || strcmp("..", ent->d_name) == 0)
 	continue; // skip these
       var sub = fmtstr("%s/%s", loc_path, ent->d_name);
-      update_run(db, sub);
+      sql_exec(db, "INSERT INTO local.to_process (name) VALUES (?)", SQL_STRING, sub, SQL_END);
+      
       dealloc(sub);
     }
     closedir(d);
+    
   }else if(stat_is_reg(sb)){
     //logd("FILE: %s\n", loc_path);
     //sql_exec_str(db, "insert into files (name) VALUES (?)", loc_path);
-    sql_exec(db, "insert into files (name, type, size, modified, created, permissions) VALUES (?, ?, ?, ?, ?, ?)", SQL_STRING, loc_path, SQL_INT, 2, SQL_INT, sb.st_size, SQL_INT, sb.st_mtime, SQL_INT, sb.st_ctime, SQL_INT, stat_perm(sb), SQL_END);
-    
+    sql_exec(db, "insert or ignore into local.temp_files (name, type, size, modified, created, permissions) VALUES (?, ?, ?, ?, ?, ?)", SQL_STRING, loc_path, SQL_INT, 2, SQL_INT, sb.st_size, SQL_INT, sb.st_mtime, SQL_INT, sb.st_ctime, SQL_INT, stat_perm(sb), SQL_END);    
+  }
+  sql_exec(db, "UPDATE local.to_process SET finished = 1 WHERE name = ?", SQL_STRING, loc_path, SQL_END);
+}
+
+bool process_files(sqlite3 * db){
+  sql_exec(db, "BEGIN TRANSACTION");
+  const char * sql = "SELECT name FROM local.to_process WHERE finished IS NULL LIMIT 10";
+  sqlite3_stmt * stmt;
+  sqlite3_prepare(db, sql, strlen(sql), &stmt, NULL);
+  char * files[10] = {0};
+  int i = 0;
+  int status;
+  while((status = sqlite3_step(stmt)) == SQLITE_ROW){
+    ASSERT(i < 10);
+    const char * file = sqlite3_column_text(stmt, 0);
+    files[i] = fmtstr("%s", file);
+    i++;
+  }
+  sqlite3_finalize(stmt);
+  if(status == SQLITE_ERROR || status == SQLITE_MISUSE){
+    const char * err = sqlite3_errmsg(db);
+    ERROR("ERROR occured: %s", err);
+  }
+  if(i == 0){
+    sql_exec(db, "COMMIT");
+    return false;
+  }
+  for(int j = 0; j < i; j++){
+    if(files[j] == NULL)
+      break;
+    logd("processing: %s\n", files[j]);
+    update_run(db, files[j]);
+    dealloc(files[j]);
+    files[j] = NULL;
   }
   
+  sql_exec(db, "DELETE FROM local.to_process WHERE finished = 1");
+  sql_exec(db, "COMMIT");
+  return true;
 }
+
 
 int main(int argc, char ** argv){
   sqlite3_initialize();
 
   sqlite3 *db = 0;
-  sqlite3_open(":memory:", &db);
+  sqlite3_open("main.sql", &db);
+  //sql_exec(db, "ATTACH DATABASE 'main.sql' as main");
+  sql_exec(db, "ATTACH DATABASE 'local.sql' as local");
   sql_query(db, "pragma user_version = 150");
   sql_query(db, "pragma user_version");
-  sql_query(db, "create table files (name TEXT PRIMARY KEY, type INTEGER, size BIGINTEGER, modified INTEGER, created INTEGER, permissions INTEGER);");
+  sql_query(db, "create table IF NOT EXISTS files (name TEXT PRIMARY KEY, type INTEGER, size BIGINTEGER, modified BIGINTEGER, created BIGINTEGER, permissions INTEGER);");
 
   // temp_files should contain the current state of the calculation
   // in addition to the fact if a thing has been processed to completion
   // the minimal amount of processing differs for different types of objects
   // for extremely large collections of files, the update operation may take a significant amount of time, therefore, it should be done in some chunks locally. It may be best if this part of the operation is contained in a separate macine-local file.
   // for this purpose, the ATTACH statement might be the right way to make joins from a local DB to the backed DB.
-  sql_query(db, "create temp table temp_files (name TEXT PRIMARY KEY, type INTEGER, size BIGINTEGER, modified INTEGER, created INTEGER, permissions INTEGER, touch INTEGER);");
-
-  sql_query(db, "create temp table zero (touch INTEGER)");
-  sql_query(db, "INSERT INTO zero (touch) VALUES (0)");
-  
+  // note: consider using the parent folder AND file name as combined PRIMARY KEy.
+  // that will reduce the amount of overhead in storing the files and make us
+  // immune to the problem of directory separators that needs to be handled.
+  // eg:
+  //column1 INTEGER NOT NULL,
+  //column2 INTEGER NOT NULL,
+  //PRIMARY KEY ( column1, column2)
+  // one problem is that it might make it hard to move from local to main table.// however having to handle ALL possible file names is going to be  PAIN
+  // so it is probably better to just find a solution to that problem.
+  sql_query(db, "create table IF NOT EXISTS local.temp_files (name TEXT PRIMARY KEY, type INTEGER, size BIGINTEGER, modified INTEGER, created INTEGER, permissions INTEGER, touch INTEGER);");
+  sql_query(db, "create table IF NOT EXISTS local.to_process (name TEXT PRIMARY KEY, finished INTEGER);");
+  sql_exec(db, "BEGIN TRANSACTION");
+  //update_run(db, "/home/romadsen/syncthing");
   update_run(db, "./iron");
-  sql_query(db, "INSERT INTO temp_files SELECT * FROM files JOIN zero");
-  sql_exec3(db, true, "SELECT count(name), sum(size)/1000000 from temp_files");
+  sql_exec(db, "COMMIT");
+  
+  logd("EH:\n");
+  while(process_files(db)){
+    sql_exec3(db, true, "SELECT * FROM local.to_process LIMIT 10");
+  
+  }
+  //sql_exec3(db, true, "SELECT name FROM local.to_process");
+  process_files(db);
+  sql_exec3(db, true, "SELECT * FROM local.to_process");
+  sqlite3_close(db);
+  //sql_query(db, "create temp table zero (touch INTEGER)");
+  //sql_query(db, "INSERT INTO zero (touch) VALUES (0)");
+  
+  //update_run(db, "./iron");
+  //sql_query(db, "INSERT INTO temp_files SELECT * FROM files JOIN zero");
+  //sql_exec3(db, true, "SELECT count(name), sum(size)/1000000 from temp_files");
   //sql_exec3(db, true, "SELECT * FROM temp_files");
-  print_files_table(db);
+  //print_files_table(db);
   return 0;
   
 }

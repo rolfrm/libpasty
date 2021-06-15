@@ -1,4 +1,4 @@
-OPT = -O3 -g3
+OPT = -O0 -g3
 LIB_SOURCES1 = main.c 
 
 LIB_SOURCES = $(addprefix src/, $(LIB_SOURCES1)) sqlite3/sqlite3.c
