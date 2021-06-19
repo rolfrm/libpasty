@@ -4,3 +4,6 @@
 [submodule "sqlite3"]
 	path = sqlite3
 	url = git@github.com:rolfrm/sqlite3.git
+[submodule "openssl"]
+	path = submodule_openssl
+	url = git@github.com:openssl/openssl.git

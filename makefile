@@ -1,12 +1,12 @@
 OPT = -O0 -g3
-LIB_SOURCES1 = main.c 
+LIB_SOURCES1 = main.c crypto.c
 
 LIB_SOURCES = $(addprefix src/, $(LIB_SOURCES1)) sqlite3/sqlite3.c
 CC = gcc
 TARGET = run
 LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
 LDFLAGS= -L. $(OPT) # -Wl,--gc-sections -Wl,-s -fdata-sections -ffunction-sections
-LIBS= libiron.a -lpthread -ldl -lGL -lGLEW -lm  -lopenal -licydb  -lX11
+LIBS= libiron.a ./openssl/libcrypto.a -lpthread -ldl -lGL -lGLEW -lm  -lopenal -licydb  -lX11 
 ALL= $(TARGET)
 CFLAGS = -Isrc/ -I. -Iinclude/ -std=gnu11 -c $(OPT) -Werror=implicit-function-declaration -Wformat=0 -D_GNU_SOURCE -fdiagnostics-color  -Wwrite-strings -msse4.2 -Werror=maybe-uninitialized -DUSE_VALGRIND -DDEBUG -Wall
 
