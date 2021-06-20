@@ -256,6 +256,8 @@ bool process_files(sqlite3 * db){
 }
 
 void crypto_main(void);
+void crypto_main_evp(void);
+int aes_main (void);
 int main(int argc, char ** argv){
   sqlite3_initialize();
 
@@ -309,7 +311,21 @@ int main(int argc, char ** argv){
   sqlite3_close(db);
   //sql_exec3(db, true, "SELECT * FROM temp_files");
   //print_files_table(db);
-  crypto_main();
+  //crypto_main();
+  aes_main();
+  //crypto_main_evp();
+  logd("eh?\n");
   return 0;
   
+}
+
+void log_print(log_level l, const char * fmt, ...){
+  
+  va_list argList;
+  va_start(argList, fmt);
+  vprintf(fmt, argList);
+  va_end(argList);
+}
+void iron_log_stacktrace(void){
+
 }

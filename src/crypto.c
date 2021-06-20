@@ -34,33 +34,72 @@ void crypto_main(void){
   logd("Decrypt %s\n", decrypt);  
 }
 
-void crypto_main_evp(void){
-  logd("Test crypto EVP!\n");
 
-  EVP_PKEY *pkey = NULL;
-  EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_ED25519, NULL);
-  EVP_PKEY_keygen_init(pctx);
-  EVP_PKEY_keygen(pctx, &pkey);
-  
-  const char * message = "hej hej";
-  char * encrypt = (char *)malloc(100);
-  size_t encrypt_len = 100;
-  var err = (char *)malloc(130);
-
-  
-  
-  if((encrypt_len = EVP_PKEY_encrypt(pctx,message, strlen(message)+1,  (unsigned char*)encrypt, &encrypt_len )) == -1) {
-    ERR_load_crypto_strings();
-    ERR_error_string(ERR_get_error(), err);
-    fprintf(stderr, "Error encrypting message: %s\n", err);    
-  }
-  logd("Encrypt length: %i\n", encrypt_len);
-  size_t decrypt_len = 100;
-  char * decrypt = (char *)alloc0(decrypt_len);
-
-  EVP_PKEY_decrypt(pctx, decrypt, &decrypt_len, decrypt, encrypt, encrypt_len);
-  logd("Decrypt length %i\n", decrypt_len);
-  logd("Decrypt %s\n", decrypt);
-  
+int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
+            unsigned char *iv, unsigned char *ciphertext)
+{
+  int len;
+  int ciphertext_len;
+  var ctx = EVP_CIPHER_CTX_new();
+  EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv);
+  EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len);
+  ciphertext_len = len;
+  EVP_EncryptFinal_ex(ctx, ciphertext + len, &len);
+  ciphertext_len += len;
+  EVP_CIPHER_CTX_free(ctx);
+  return ciphertext_len;
 }
 
+int decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key,
+            unsigned char *iv,  char ** plaintext)
+{
+    int len;
+    int plaintext_len = 0;
+    void * outbuf = NULL;
+    var ctx = EVP_CIPHER_CTX_new();
+    EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv);
+    u8 block[256] = {0};
+    bool finished = false;
+    while(!finished){
+      len = sizeof(block);
+      int read = MIN(sizeof(block), ciphertext_len);
+      EVP_DecryptUpdate(ctx, block, &len, ciphertext, read );
+      ciphertext += read;
+      ciphertext_len -= read;
+      if(len == 0){
+	EVP_DecryptFinal_ex(ctx, block, &len);
+	finished = true;
+      }
+      outbuf = realloc(outbuf, plaintext_len + len);
+      memcpy(outbuf + plaintext_len, block, len);
+      plaintext_len += len;
+    }
+    *plaintext = outbuf;
+    EVP_CIPHER_CTX_free(ctx);
+    return plaintext_len;
+}
+
+int aes_main (void)
+{
+  //A 256 bit key 
+    unsigned char *key = (unsigned char *)"01234567890123456789012345678901";
+    // A 128 bit IV 
+    unsigned char *iv = (unsigned char *)"0123456789012345";
+    unsigned char *plaintext =
+      (unsigned char *)"The quick brown fox jumps over the lazy dog The quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over2e21e2e12e12e12e12e21e12e21e2-i- -1 lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over2e21e2e12e12e12e12e21e12e21e2-i- -1 ";
+    
+    unsigned char ciphertext[1028];
+
+    int decryptedtext_len, ciphertext_len;
+    ciphertext_len = encrypt (plaintext, strlen ((char *)plaintext) + 1, key, iv,
+                              ciphertext);
+
+    char * decbuf = NULL;
+    
+    decryptedtext_len = decrypt(ciphertext, ciphertext_len, key, iv, &decbuf);
+    printf("Decrypted text is:\n");
+    printf("%s\n", decbuf);
+    printf("Length was: %i\n", decryptedtext_len);
+
+    return 0;
+}
