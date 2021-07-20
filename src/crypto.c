@@ -103,3 +103,80 @@ int aes_main (void)
 
     return 0;
 }
+
+typedef struct{
+  EVP_CIPHER_CTX * ctx;
+  u8 * block;
+  u32 buffer_size;
+  bool encrypt;
+}crypter;
+
+crypter * crypto_encrypt_new(int buffer_size, const char * key, const char * iv){
+  var ctx = EVP_CIPHER_CTX_new();
+  EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, (void *) key, (void *)iv);
+  crypter c = {.ctx = ctx, .block = alloc0(buffer_size), .buffer_size = buffer_size, .encrypt = true};
+  return iron_clone(&c, sizeof(c));
+}
+
+crypter * crypto_decrypt_new(int buffer_size, const char * key, const char * iv){
+  var ctx = EVP_CIPHER_CTX_new();
+  EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, (void *) key, (void *)iv);
+  crypter c = {.ctx = ctx, .block = alloc0(buffer_size), .buffer_size = buffer_size, .encrypt = false};
+  return iron_clone(&c, sizeof(c));
+}
+
+u32 crypto_update(crypter * crypt, void * in_data, u32 in_len, void * out_data, u32 out_len){
+  i32 l = (i32) out_len;
+  EVP_CipherUpdate(crypt->ctx, out_data, &l, in_data, in_len);
+  return l;
+}
+
+u32 crypto_finalize(crypter * crypt, void *out_data, u32 out_len){
+  i32 l = (i32) out_len;
+  EVP_CipherFinal_ex(crypt->ctx, out_data, &l);
+  return l;
+}
+
+void crypto_delete(crypter * crypt){
+  EVP_CIPHER_CTX_free(crypt->ctx);
+  dealloc(crypt->block);
+  dealloc(crypt);
+}
+
+void crypter_test(void){
+  const char *key = "01234567890123456789012345678901";
+    // A 128 bit IV 
+  const char  *iv = "0123456789012345";
+  char *plaintext =
+    (char *)"The quick brown fox jumps over the lazy dog The quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over2e21e2e12e12e12e12e21e12e21e2-i- -1 lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over2e21e2e12e12e12e12e21e12e21e2-i- -1The quick brown fox jumps over the lazy dog The quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps over the lazy dogThe quick brown fox jumps ";
+
+  u8 block[1024 * 24] = {0};
+  crypter * c1 = crypto_encrypt_new(1024, key, iv);
+  u32 block_offset = 0;
+  for(u32 i = 0; i < strlen(plaintext); i += 256){
+    u32 w = crypto_update(c1, plaintext + i, MIN(strlen(plaintext) - i, 256), block + block_offset, sizeof(block) - block_offset);
+    block_offset += w;
+    logd("%i\n", block_offset);
+  }
+  block_offset += crypto_finalize(c1, block + block_offset, sizeof(block) - block_offset);
+  logd("Crypting done.\n size: %i\n", block_offset);
+  logd("input size: %i\n", strlen(plaintext));
+  for(u32 i = 0; i < block_offset + 2; i++){
+    logd("%x ", block[i]);
+    if(i%32 == 31)
+      logd("\n");
+  }
+  logd("\n");
+  u8 block2[1024 * 24] = {0};
+  u32 block_offset2 = 0;
+  crypter * c2 = crypto_decrypt_new(1024, key, iv);
+  for(u32 i = 0; i < block_offset; i += 256){
+    u32 w = crypto_update(c2, block + i, MIN(block_offset - i, 256), block2 + block_offset2, sizeof(block2) - block_offset2);
+    block_offset2 += w;
+  }
+  block_offset2 += crypto_finalize(c2, block2 + block_offset2, sizeof(block) - block_offset2);
+  logd("%i (%i): %s\n", strlen(block2), block_offset2, block2);
+  logd("==: %i\n", strcmp(block2, plaintext));
+  crypto_delete(c2);
+  crypto_delete(c1);
+}

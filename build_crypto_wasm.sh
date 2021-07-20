@@ -8,7 +8,7 @@ export CXXFLAGS=" ${ARCH_FLAGS} "
 export CFLAGS=" ${ARCH_FLAGS} -O3 -g0"
 export LDFLAGS=" ${ARCH_LINK} -O3 -g0"
 echo  $OSTYPE | grep -i darwin > /dev/null 2> /dev/null
-rm -r archive
+emcc --version
 mkdir archive
 cd submodule_openssl
 git clean -dfx
@@ -20,4 +20,5 @@ ar x libcrypto.a
 rm ./liblegacy*
 emcc *.o -r -s WASM=1 -s USE_GLFW=3 -o libcrypto.bc
 cp libcrypto.bc ../
+rm -r archive
  
