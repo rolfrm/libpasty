@@ -180,3 +180,7 @@ void crypter_test(void){
   crypto_delete(c2);
   crypto_delete(c1);
 }
+
+void log_print(log_level x, const char * fmt, ...){
+  UNUSED(x);
+}

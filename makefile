@@ -2,7 +2,7 @@ OPT = -O0 -g3
 LIB_SOURCES1 =  main.c crypto.c
 
 LIB_SOURCES = $(addprefix src/, $(LIB_SOURCES1)) 
-CC = gcc
+CC = clang-12
 TARGET = run
 LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
 LDFLAGS= -L. $(OPT)
@@ -14,7 +14,7 @@ all: libiron.a libcrypto.a
 all: $(TARGET)
 
 $(TARGET): $(LIB_OBJECTS) 
-	$(CC) $(LDFLAGS)   $(LIB_OBJECTS) libiron.a $(LIBS)  -o $(TARGET)
+	$(CC) $(LDFLAGS)   $(LIB_OBJECTS)  $(LIBS)  -o $(TARGET)
 
 .PHONY: iron/libiron.a
 
@@ -41,10 +41,10 @@ release: all
 wasm_release: OPT = -flto=thin -O3 -g0
 wasm_release: wasm
 wasm: CC = emcc
-wasm: CFLAGS = -c -Isrc/ -I. -Iinclude/ -Isubmodule_openssl/include
-wasm: LDFLAGS= -s WASM=1 -s USE_GLFW=3 --gc-sections 
+wasm: CFLAGS = -c -Isrc/ -I. -Iinclude/ -Isubmodule_openssl/include --target=wasm32
+wasm: 
 wasm: LIBS= libiron.bc libcrypto.bc -lpthread -ldl
-wasm: TARGET = pasty.wasm
+wasm: TARGET = pasty.js
 wasm: libiron.bc
 wasm: libcrypto.bc
 wasm: $(TARGET)

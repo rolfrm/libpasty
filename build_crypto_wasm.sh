@@ -20,5 +20,6 @@ ar x libcrypto.a
 rm ./liblegacy*
 emcc *.o -r -s WASM=1 -s USE_GLFW=3 -o libcrypto.bc
 cp libcrypto.bc ../
+cd ..
 rm -r archive
  
